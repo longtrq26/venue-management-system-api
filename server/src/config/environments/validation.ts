@@ -14,8 +14,8 @@ export const environmentValidationSchema = Joi.object({
 
   // API
   API_PREFIX: Joi.string()
-    .pattern(/^\/[a-z0-9-]+$/)
-    .default('/api'),
+    .pattern(/^[a-z0-9-]+$/)
+    .default('api'),
   API_VERSION: Joi.string()
     .pattern(/^v\d+$/)
     .default('v1'),
