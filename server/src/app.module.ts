@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { apiConfig } from './config/api.config';
 import { appConfig } from './config/app.config';
 import { clientConfig } from './config/client.config';
@@ -24,6 +25,11 @@ import { smtpConfig } from './config/smtp.config';
         smtpConfig,
         paymentConfig,
       ],
+    }),
+
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => config.getOrThrow('database'),
     }),
   ],
   controllers: [],

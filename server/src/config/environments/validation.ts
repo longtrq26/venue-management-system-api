@@ -83,4 +83,6 @@ export const environmentValidationSchema = Joi.object({
   PAYMENT_CLIENT_ID: Joi.string().min(8).required(),
   PAYMENT_API_KEY: Joi.string().min(32).required(),
   PAYMENT_CHECKSUM_KEY: Joi.string().min(32).required(),
-});
+})
+  .prefs({ errors: { label: 'key' } })
+  .unknown(true);
