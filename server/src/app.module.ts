@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { configurations } from './config/index.config';
 import { LoggerModule } from './providers/logger/logger.module';
+import { SmtpModule } from './providers/smtp/smtp.module';
 
 @Module({
   imports: [
@@ -18,6 +19,8 @@ import { LoggerModule } from './providers/logger/logger.module';
     }),
 
     LoggerModule,
+
+    SmtpModule,
   ],
   controllers: [],
   providers: [],
