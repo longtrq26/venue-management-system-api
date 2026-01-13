@@ -304,7 +304,7 @@ export class UserService {
     }
   }
 
-  async getUserById(id: string): Promise<UserResponse | null> {
+  async getUserById(id: string): Promise<User | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { id: id, deletedAt: IsNull() },
@@ -367,7 +367,7 @@ export class UserService {
     }
   }
 
-  async getUserByVerificationToken(token: string): Promise<UserResponse | null> {
+  async getUserByVerificationToken(token: string): Promise<User | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { verificationToken: token, deletedAt: IsNull() },
@@ -404,7 +404,7 @@ export class UserService {
     }
   }
 
-  async getUserByEmailChangeToken(token: string): Promise<UserResponse | null> {
+  async getUserByEmailChangeToken(token: string): Promise<User | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { emailChangeToken: token, deletedAt: IsNull() },
@@ -445,7 +445,7 @@ export class UserService {
     }
   }
 
-  async getUserByPasswordResetToken(token: string): Promise<UserResponse | null> {
+  async getUserByPasswordResetToken(token: string): Promise<User | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { passwordResetToken: token, deletedAt: IsNull() },

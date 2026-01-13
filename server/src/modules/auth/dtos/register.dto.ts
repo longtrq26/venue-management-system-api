@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, Length, Matches, Validate } from 'class-validator';
 import { Match } from 'src/common/validators/match.validator';
 
-export class CreateUserDto {
+export class RegisterDto {
   @IsEmail({}, { message: 'Email is not valid' })
   @IsNotEmpty()
   @Transform(({ value }: { value: string }) => value?.trim().toLowerCase())
