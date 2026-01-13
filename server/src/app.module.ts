@@ -5,8 +5,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessTokenGuard } from './common/guards/access-token.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { configurations } from './config/index.config';
+import { AuthModule } from './modules/auth/auth.module';
+import { BookingModule } from './modules/booking/booking.module';
+import { CourtModule } from './modules/court/court.module';
+import { NotificationModule } from './modules/notification/notification.module';
+import { UserModule } from './modules/user/user.module';
 import { LoggerModule } from './providers/logger/logger.module';
 import { SmtpModule } from './providers/smtp/smtp.module';
+import { VenueModule } from './modules/venue/venue.module';
+import { PaymentModule } from './modules/payment/payment.module';
 
 @Module({
   imports: [
@@ -23,6 +30,13 @@ import { SmtpModule } from './providers/smtp/smtp.module';
 
     LoggerModule,
     SmtpModule,
+    NotificationModule,
+    UserModule,
+    AuthModule,
+    CourtModule,
+    BookingModule,
+    VenueModule,
+    PaymentModule,
   ],
   providers: [
     {
