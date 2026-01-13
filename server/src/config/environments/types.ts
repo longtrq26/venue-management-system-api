@@ -27,6 +27,16 @@ export interface EnvironmentVariables {
   AUTH_JWT_REFRESH_SECRET: string;
   AUTH_JWT_REFRESH_EXPIRES_IN: string;
 
+  // Logger - Winston
+  LOG_LEVEL: string;
+  LOG_DIRECTORY: string;
+  LOG_MAX_SIZE: string;
+  LOG_MAX_FILES: string;
+  LOG_DATE_PATTERN: string;
+  LOG_ZIPPED_ARCHIVE: boolean;
+  LOG_CONSOLE_ENABLED: boolean;
+  LOG_CONSOLE_COLORIZE: boolean;
+
   // Rate Limiting - Throttler
   RATE_LIMIT_SHORT_TTL: number;
   RATE_LIMIT_SHORT_LIMIT: number;

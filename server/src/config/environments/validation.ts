@@ -61,6 +61,22 @@ export const environmentValidationSchema = Joi.object({
     .pattern(/^\d+[smhd]$/)
     .required(),
 
+  // Logger - Winston
+  LOG_LEVEL: Joi.string()
+    .valid('error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly')
+    .default('info'),
+  LOG_DIRECTORY: Joi.string().min(1).default('logs'),
+  LOG_MAX_SIZE: Joi.string()
+    .pattern(/^\d+(k|m|g)$/i)
+    .default('20m'),
+  LOG_MAX_FILES: Joi.string()
+    .pattern(/^(\d+d|\d+)$/)
+    .default('30d'),
+  LOG_DATE_PATTERN: Joi.string().default('DD-MM-YYYY'),
+  LOG_ZIPPED_ARCHIVE: Joi.boolean().truthy('true').falsy('false').default(true),
+  LOG_CONSOLE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  LOG_CONSOLE_COLORIZE: Joi.boolean().truthy('true').falsy('false').default(true),
+
   // Rate Limiting - Throttler
   RATE_LIMIT_SHORT_TTL: Joi.number()
     .integer()
