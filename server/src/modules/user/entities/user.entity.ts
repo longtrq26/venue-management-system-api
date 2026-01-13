@@ -49,6 +49,7 @@ export class User extends BaseEntity {
     nullable: true,
     select: false,
   })
+  @Exclude()
   verificationTokenExpiry: Date | null;
 
   @Column({
@@ -75,6 +76,7 @@ export class User extends BaseEntity {
     nullable: true,
     select: false,
   })
+  @Exclude()
   pendingEmail: string | null;
 
   @Column({
