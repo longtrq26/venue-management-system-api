@@ -1,0 +1,6 @@
+export enum CourtType {
+  SOCCER = 'SOCCER',
+  BADMINTON = 'BADMINTON',
+  TENNIS = 'TENNIS',
+  PICKLEBALL = 'PICKLEBALL',
+}
