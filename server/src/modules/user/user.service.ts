@@ -365,9 +365,12 @@ export class UserService {
   // refresh token, change password
   async getAuthUser(id: string): Promise<UserAuthResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { id: id, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect(['user.passwordHash', 'user.refreshTokenHash', 'user.refreshTokenExpiry'])
+        .where('user.id = :id', { id })
+        .andWhere('user.deletedAt IS NULL')
+        .getOne();
 
       if (!user) {
         this.logger.debug(`User not found by ID: ${id}`, this.CONTEXT);
@@ -389,9 +392,12 @@ export class UserService {
   // login
   async getUserByEmailForLogin(email: string): Promise<UserLoginResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { email, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect('user.passwordHash')
+        .where('user.email = :email', { email })
+        .andWhere('user.deletedAt IS NULL')
+        .getOne();
 
       if (!user) {
         this.logger.debug(`User not found by email: ${email}`, this.CONTEXT);
@@ -464,9 +470,12 @@ export class UserService {
   // reset password
   async getUserByPasswordResetToken(token: string): Promise<UserPasswordResetResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { passwordResetToken: token, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect(['user.passwordResetToken', 'user.passwordResetTokenExpiry'])
+        .where('user.passwordResetToken = :token', { token })
+        .andWhere('user.deletedAt IS NULL')
+        .getOne();
 
       if (!user) {
         this.logger.debug(`User not found by password reset token`, this.CONTEXT);
@@ -535,9 +544,12 @@ export class UserService {
   // request change email, confirm change email
   async getUserByEmailChangeToken(token: string): Promise<UserEmailChangeResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { emailChangeToken: token, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect(['user.pendingEmail', 'user.emailChangeToken', 'user.emailChangeTokenExpiry'])
+        .where('user.emailChangeToken = :token', { token })
+        .andWhere('user.deletedAt IS NULL')
+        .getOne();
 
       if (!user) {
         this.logger.debug(`User not found by email change token`, this.CONTEXT);

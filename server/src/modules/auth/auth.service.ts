@@ -391,13 +391,16 @@ export class AuthService {
     }
 
     try {
+      // Update password first
       await this.userService.resetPassword(id, dto.newPassword);
+
+      await this.logout(id);
 
       await this.notificationService.createNotification(
         id,
         NotificationType.SYSTEM,
         'Password Changed',
-        'Your password has been successfully changed.',
+        'Your password has been successfully changed. You have been logged out from all devices.',
       );
 
       this.logger.log(`Password changed successfully for user: ${id}`, this.CONTEXT);
