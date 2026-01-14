@@ -25,20 +25,6 @@ export type UserResponse = Omit<
   | 'passwordResetTokenExpiry'
 >;
 
-export type UserLoginResponse = UserResponse & Pick<User, 'passwordHash'>;
-
-export type UserAuthResponse = UserResponse &
-  Pick<User, 'passwordHash' | 'refreshTokenHash' | 'refreshTokenExpiry'>;
-
-export type UserVerificationResponse = UserResponse &
-  Pick<User, 'verificationToken' | 'verificationTokenExpiry'>;
-
-export type UserEmailChangeResponse = UserResponse &
-  Pick<User, 'pendingEmail' | 'emailChangeToken' | 'emailChangeTokenExpiry'>;
-
-export type UserPasswordResetResponse = UserResponse &
-  Pick<User, 'passwordResetToken' | 'passwordResetTokenExpiry'>;
-
 export type PaginatedUsersResponse = {
   users: UserResponse[];
   meta: {

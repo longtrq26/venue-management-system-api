@@ -16,16 +16,7 @@ import { NotificationService } from '../notification/notification.service';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserListQueryDto } from './dtos/user-list-query.dto';
 import { User } from './entities/user.entity';
-import {
-  CreateUserPayload,
-  PaginatedUsersResponse,
-  UserAuthResponse,
-  UserEmailChangeResponse,
-  UserLoginResponse,
-  UserPasswordResetResponse,
-  UserResponse,
-  UserVerificationResponse,
-} from './types/user.type';
+import { CreateUserPayload, PaginatedUsersResponse, UserResponse } from './types/user.type';
 
 @Injectable()
 export class UserService {
@@ -388,7 +379,7 @@ export class UserService {
 
   // auth
   // refresh token, change password
-  async getAuthUser(id: string): Promise<UserAuthResponse | null> {
+  async getAuthUser(id: string): Promise<User | null> {
     try {
       const user = await this.userRepository
         .createQueryBuilder('user')
@@ -415,7 +406,7 @@ export class UserService {
   }
 
   // login
-  async getUserByEmailForLogin(email: string): Promise<UserLoginResponse | null> {
+  async getUserByEmailForLogin(email: string): Promise<User | null> {
     try {
       const user = await this.userRepository
         .createQueryBuilder('user')
@@ -443,7 +434,7 @@ export class UserService {
 
   // account verification
   // verify email
-  async getUserByVerificationToken(token: string): Promise<UserVerificationResponse | null> {
+  async getUserByVerificationToken(token: string): Promise<User | null> {
     try {
       const user = await this.userRepository
         .createQueryBuilder('user')
@@ -496,7 +487,7 @@ export class UserService {
 
   // password reset
   // reset password
-  async getUserByPasswordResetToken(token: string): Promise<UserPasswordResetResponse | null> {
+  async getUserByPasswordResetToken(token: string): Promise<User | null> {
     try {
       const user = await this.userRepository
         .createQueryBuilder('user')
@@ -571,7 +562,7 @@ export class UserService {
 
   // email change
   // request change email, confirm change email
-  async getUserByEmailChangeToken(token: string): Promise<UserEmailChangeResponse | null> {
+  async getUserByEmailChangeToken(token: string): Promise<User | null> {
     try {
       const user = await this.userRepository
         .createQueryBuilder('user')
