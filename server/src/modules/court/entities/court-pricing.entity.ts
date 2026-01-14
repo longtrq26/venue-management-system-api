@@ -10,12 +10,15 @@ export class CourtPricing extends BaseEntity {
   type: CourtType;
 
   @Index()
-  @Column({ name: 'court_id' })
-  courtId: string;
+  @Column({ name: 'court_id', nullable: true })
+  courtId: string | null;
 
-  @ManyToOne(() => Court, (court) => court.pricings, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Court, (court) => court.pricings, {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
   @JoinColumn({ name: 'court_id' })
-  court: Court;
+  court: Court | null;
 
   @Column({ name: 'start_time', type: 'time' })
   startTime: string;
