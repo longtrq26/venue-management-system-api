@@ -197,13 +197,23 @@ export class PaymentService {
         payment.paidAt = new Date();
         await this.paymentRepository.save(payment);
 
-        // Update booking group and bookings status
-        if (payment.bookingGroupId) {
-          await this.bookingService.updateGroupPaymentStatus(
-            payment.bookingGroupId,
-            PaymentStatus.PAID,
-            BookingStatus.CONFIRMED,
+        try {
+          // Update booking group and bookings status
+          if (payment.bookingGroupId) {
+            await this.bookingService.updateGroupPaymentStatus(
+              payment.bookingGroupId,
+              PaymentStatus.PAID,
+              BookingStatus.CONFIRMED,
+            );
+          }
+        } catch (bookingError) {
+          this.logger.error(
+            `CRITICAL: Payment marked as PAID but failed to update BookingGroup status. OrderCode: ${orderCode}, Group: ${payment.bookingGroupId}`,
+            bookingError instanceof Error ? bookingError.stack : undefined,
+            this.CONTEXT,
           );
+          // Potentially revert payment status? Or alert admin?
+          // For now, logging critical error is better than crashing webhook response.
         }
 
         this.logger.log(

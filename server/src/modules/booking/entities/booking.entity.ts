@@ -7,6 +7,7 @@ import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { BookingGroup } from './booking-group.entity';
 
 @Entity('bookings')
+@Index(['date', 'startTime'])
 export class Booking extends BaseEntity {
   @Index()
   @Column({ name: 'court_id' })

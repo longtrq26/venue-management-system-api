@@ -18,14 +18,10 @@ export class VenueController {
   @Public()
   @HttpCode(HttpStatus.OK)
   async getVenueInfo() {
-    const [venueConfiguration, operatingHours] = await Promise.all([
-      this.venueService.getVenueConfig(),
-      this.operatingHourService.getOperatingHours(),
-    ]);
+    const venueConfiguration = await this.venueService.getVenueConfig();
 
     return {
       venueConfiguration,
-      operatingHours,
     };
   }
 

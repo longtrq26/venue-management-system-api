@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CourtType } from 'src/common/enums/court-type.enum';
 import { VenueService } from 'src/modules/venue/services/venue.service';
 import { LoggerService } from 'src/providers/logger/logger.service';
-import { IsNull, LessThanOrEqual, MoreThan, Repository } from 'typeorm';
+import { Brackets, IsNull, Repository } from 'typeorm';
 import { CreateCourtPricingDto } from '../dtos/create-court-pricing.dto';
 import { UpdateCourtPricingDto } from '../dtos/update-court-pricing.dto';
 import { CourtPricing } from '../entities/court-pricing.entity';
@@ -79,60 +79,56 @@ export class CourtPricingService {
     }
   }
 
+  async getPricingRules(type: CourtType, courtId?: string) {
+    try {
+      const query = this.courtPricingRepository
+        .createQueryBuilder('rule')
+        .where('rule.type = :type', { type })
+        .orderBy('rule.priority', 'DESC');
+
+      if (courtId) {
+        // Fetch global rules (courtId is null) OR specific rules for this court
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('rule.courtId = :courtId', { courtId }).orWhere('rule.courtId IS NULL');
+          }),
+        );
+      } else {
+        query.andWhere('rule.courtId IS NULL');
+      }
+
+      return await query.getMany();
+    } catch (error) {
+      this.logger.error(
+        `Failed to fetch pricing rules for type ${type}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  calculatePriceFromRules(rules: CourtPricing[], slotStart: string): number {
+    // Rules are already sorted by priority DESC from DB
+    // Find the first rule that matches the time slot
+    const matchedRule = rules.find(
+      (rule) => rule.startTime <= slotStart && rule.endTime > slotStart,
+    );
+
+    return Number(matchedRule?.price) || 0;
+  }
+
   async calculatePrice(type: CourtType, slotStart: string, courtId?: string): Promise<number> {
     try {
-      this.logger.debug(
-        `Calculating price for court type ${type}${courtId ? `, court ${courtId}` : ''} at ${slotStart}`,
-        this.CONTEXT,
-      );
+      // Optimized: Fetch all potentially matching rules once, then filter in memory
+      // However, for single calculation, the previous method was fine.
+      // But consistent strategy is better.
+      // Let's keep original logic for single call if needed, OR redirect to new logic.
+      // Redirecting might actually be slower for single call due to fetching ALL rules.
+      // But rules count is usually small (< 50).
 
-      // tìm rule riêng
-      if (courtId) {
-        const specificRule = await this.courtPricingRepository.findOne({
-          where: {
-            courtId,
-            startTime: LessThanOrEqual(slotStart),
-            endTime: MoreThan(slotStart),
-          },
-          order: { priority: 'DESC' },
-        });
-
-        if (specificRule) {
-          const price = Number(specificRule.price);
-          this.logger.debug(
-            `Price calculated (Specific Override): ${price} for court ${courtId} at ${slotStart}`,
-            this.CONTEXT,
-          );
-          return price;
-        }
-      }
-
-      // Bước 2: Fallback về luật chung
-      const globalRule = await this.courtPricingRepository.findOne({
-        where: {
-          type,
-          courtId: IsNull(),
-          startTime: LessThanOrEqual(slotStart),
-          endTime: MoreThan(slotStart),
-        },
-        order: { priority: 'DESC' }, // higher priority overrides lower priority
-      });
-
-      if (!globalRule) {
-        this.logger.warn(
-          `No pricing rule found for court type ${type} (Global) at ${slotStart}`,
-          this.CONTEXT,
-        );
-        return 0;
-      }
-
-      const price = Number(globalRule.price);
-      this.logger.debug(
-        `Price calculated (Global Default): ${price} for court type ${type} at ${slotStart}`,
-        this.CONTEXT,
-      );
-
-      return price;
+      const rules = await this.getPricingRules(type, courtId);
+      return this.calculatePriceFromRules(rules, slotStart);
     } catch (error) {
       this.logger.error(
         `Failed to calculate price for court type ${type} at ${slotStart}: ${error instanceof Error ? error.message : 'Unknown error'}`,

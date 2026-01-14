@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import dayjs from 'dayjs';
+import { CourtStatus } from 'src/common/enums/court-status.enum';
 import { DayOfWeek } from 'src/common/enums/day-of-week.enum';
 import { BookingService } from 'src/modules/booking/services/booking.service';
 import { VenueService } from 'src/modules/venue/services/venue.service';
@@ -91,6 +92,9 @@ export class CourtService {
 
       const queryBuilder = this.courtRepository.createQueryBuilder('court');
 
+      // Ensure soft-deleted courts are exluded
+      queryBuilder.andWhere('court.deletedAt IS NULL');
+
       if (type) {
         queryBuilder.andWhere('court.type = :type', { type });
       }
@@ -107,12 +111,20 @@ export class CourtService {
 
       const [data, total] = await queryBuilder.getManyAndCount();
 
+      const meta = {
+        totalItems: total,
+        currentPage: page,
+        lastPage: Math.ceil(total / pageSize),
+        hasNextPage: page < Math.ceil(total / pageSize),
+        hasPreviousPage: page > 1,
+      };
+
       this.logger.debug(
-        `Courts retrieved - Found: ${data.length}, Total: ${total}, Page: ${page}/${Math.ceil(total / pageSize)}`,
+        `Courts retrieved - Found: ${data.length}, Total: ${total}, Page: ${page}/${meta.lastPage}`,
         this.CONTEXT,
       );
 
-      return { data, total, page, lastPage: Math.ceil(total / pageSize) };
+      return { data, meta };
     } catch (error) {
       this.logger.error(
         `Failed to fetch court list: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -162,6 +174,10 @@ export class CourtService {
         this.logger.warn(`Court not found for deletion: ${courtId}`, this.CONTEXT);
         throw new NotFoundException('Court not found');
       }
+
+      // Update status to CLOSED before deletion to reflect inactive state
+      court.status = CourtStatus.CLOSED;
+      await this.courtRepository.save(court);
 
       const result = await this.courtRepository.softDelete(courtId);
 
@@ -325,6 +341,9 @@ export class CourtService {
         this.CONTEXT,
       );
 
+      // OPTIMIZATION: Fetch pricing rules once
+      const pricingRules = await this.courtPricing.getPricingRules(court.type, courtId);
+
       // lặp từ thời điểm hoạt động cho đến thời điểm đóng cửa
       while (current.isBefore(closeTime)) {
         const startStr = current.format('HH:mm:ss');
@@ -333,10 +352,13 @@ export class CourtService {
         const endMoment = next;
 
         // tính toán giá cho mỗi slot giờ (với fallback: giá riêng sân -> giá chung loại sân)
-        const price = await this.courtPricing.calculatePrice(court.type, startStr, courtId);
+        // Use optimized in-memory calculation
+        const price = this.courtPricing.calculatePriceFromRules(pricingRules, startStr);
 
         // kiểm tra xem slot giờ này (startMoment -> endMoment) có bị book rồi không
         const isOccupied = bookings.some((b) => {
+          // Optimized: avoid repeated parsing inside loop if possible,
+          // but for now, the pricing was the main bottleneck.
           const bookingStart = dayjs(`${dateStr} ${b.startTime}`, 'YYYY-MM-DD HH:mm:ss');
           const bookingEnd = dayjs(`${dateStr} ${b.endTime}`, 'YYYY-MM-DD HH:mm:ss');
 

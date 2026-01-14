@@ -10,7 +10,7 @@ export interface CreateBookingPayload {
   status: BookingStatus;
 }
 export interface BookingReservationStats {
-  total: string; // SUM returns string in TypeORM raw results usually
+  total: string;
 }
 
 export interface PeakHourStat {

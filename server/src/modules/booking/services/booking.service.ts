@@ -18,7 +18,7 @@ import { CourtPricingService } from 'src/modules/court/services/court-pricing.se
 import { CourtService } from 'src/modules/court/services/court.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
 import { LoggerService } from 'src/providers/logger/logger.service';
-import { Brackets, DataSource, Not, Repository } from 'typeorm';
+import { Brackets, DataSource, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { BookingListQueryDto } from '../dtos/booking-list-query.dto';
 import { CreateBookingDto } from '../dtos/create-booking.dto';
 import { Booking } from '../entities/booking.entity';
@@ -239,51 +239,37 @@ export class BookingService {
         this.CONTEXT,
       );
 
-      const queryBuilder = this.bookingRepository
-        .createQueryBuilder('booking')
-        .leftJoinAndSelect('booking.court', 'court')
-        .leftJoinAndSelect('booking.user', 'user')
-        .leftJoinAndSelect('booking.group', 'group');
-
-      // Các bộ lọc cơ bản
-      if (courtId) {
-        queryBuilder.andWhere('booking.courtId = :courtId', { courtId });
-      }
-      if (date) {
-        queryBuilder.andWhere('booking.date = :date', { date });
-      }
-      if (status) {
-        queryBuilder.andWhere('booking.status = :status', { status });
-      }
-      if (paymentStatus) {
-        queryBuilder.andWhere('booking.paymentStatus = :paymentStatus', { paymentStatus });
-      }
-      if (userId) {
-        queryBuilder.andWhere('booking.userId = :userId', { userId });
-      }
-
-      // Tìm kiếm theo thông tin User hoặc Court
+      // OPTIMIZATION: If 'search' is present, we must join tables for filtering.
+      // If NOT present, we can optimize by avoiding joins for the Count query.
       if (search) {
-        queryBuilder.andWhere(
-          new Brackets((qb) => {
-            qb.where('user.fullName ILIKE :search', { search: `%${search}%` })
-              .orWhere('user.email ILIKE :search', { search: `%${search}%` })
-              .orWhere('user.phoneNumber ILIKE :search', { search: `%${search}%` })
-              .orWhere('court.name ILIKE :search', { search: `%${search}%` });
-          }),
-        );
+        return this.getBookingListWithSearch(dto, skip, pageSize, sortOrder);
       }
 
-      // Sắp xếp theo ngày và giờ bắt đầu
-      queryBuilder.orderBy('booking.date', sortOrder);
-      queryBuilder.addOrderBy('booking.startTime', sortOrder);
+      // -- Optimized Path (No Search) --
+      const whereConditions: FindOptionsWhere<Booking> = {};
+      if (courtId) whereConditions.courtId = courtId;
+      if (date) whereConditions.date = date;
+      if (status) whereConditions.status = status;
+      if (paymentStatus) whereConditions.paymentStatus = paymentStatus;
+      if (userId) whereConditions.userId = userId;
 
-      queryBuilder.skip(skip).take(pageSize);
+      // 1. Get exact count using main table only (very fast with indexes)
+      const total = await this.bookingRepository.count({ where: whereConditions });
 
-      const [data, total] = await queryBuilder.getManyAndCount();
+      // 2. Get paginated data with relations
+      const data = await this.bookingRepository.find({
+        where: whereConditions,
+        relations: ['court', 'user', 'group'],
+        order: {
+          date: sortOrder,
+          startTime: sortOrder,
+        },
+        skip,
+        take: pageSize,
+      });
 
       this.logger.debug(
-        `Booking list retrieved - Found: ${data.length}, Total: ${total}`,
+        `Booking list retrieved (Optimized) - Found: ${data.length}, Total: ${total}`,
         this.CONTEXT,
       );
 
@@ -291,7 +277,7 @@ export class BookingService {
         data,
         total,
         page,
-        lastPage: Math.ceil(total / pageSize),
+        lastPage: Math.ceil(total / pageSize) || 1,
       };
     } catch (error) {
       this.logger.error(
@@ -301,6 +287,69 @@ export class BookingService {
       );
       throw error;
     }
+  }
+
+  private async getBookingListWithSearch(
+    dto: BookingListQueryDto,
+    skip: number,
+    pageSize: number,
+    sortOrder: Order,
+  ) {
+    const { courtId, date, status, paymentStatus, userId, search } = dto;
+    const queryBuilder = this.bookingRepository
+      .createQueryBuilder('booking')
+      .leftJoinAndSelect('booking.court', 'court')
+      .leftJoinAndSelect('booking.user', 'user')
+      .leftJoinAndSelect('booking.group', 'group');
+
+    // Các bộ lọc cơ bản
+    if (courtId) {
+      queryBuilder.andWhere('booking.courtId = :courtId', { courtId });
+    }
+    if (date) {
+      queryBuilder.andWhere('booking.date = :date', { date });
+    }
+    if (status) {
+      queryBuilder.andWhere('booking.status = :status', { status });
+    }
+    if (paymentStatus) {
+      queryBuilder.andWhere('booking.paymentStatus = :paymentStatus', { paymentStatus });
+    }
+    if (userId) {
+      queryBuilder.andWhere('booking.userId = :userId', { userId });
+    }
+
+    // Tìm kiếm theo thông tin User hoặc Court
+    if (search) {
+      queryBuilder.andWhere(
+        new Brackets((qb) => {
+          qb.where('user.fullName ILIKE :search', { search: `%${search}%` })
+            .orWhere('user.email ILIKE :search', { search: `%${search}%` })
+            .orWhere('user.phoneNumber ILIKE :search', { search: `%${search}%` })
+            .orWhere('court.name ILIKE :search', { search: `%${search}%` });
+        }),
+      );
+    }
+
+    // Sắp xếp theo ngày và giờ bắt đầu
+    queryBuilder.orderBy('booking.date', sortOrder);
+    queryBuilder.addOrderBy('booking.startTime', sortOrder);
+
+    queryBuilder.skip(skip).take(pageSize);
+
+    const [data, total] = await queryBuilder.getManyAndCount();
+
+    this.logger.debug(
+      `Booking list retrieved (Search) - Found: ${data.length}, Total: ${total}`,
+      this.CONTEXT,
+    );
+
+    return {
+      data,
+      total,
+      page: dto.page || 1,
+      lastPage: Math.ceil(total / pageSize) || 1,
+    };
   }
 
   async getUserBookingList(userId: string) {
