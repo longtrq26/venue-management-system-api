@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import dayjs from 'dayjs';
@@ -30,12 +32,15 @@ export class CourtService {
 
   constructor(
     private readonly logger: LoggerService,
+
     @InjectRepository(Court)
     private readonly courtRepository: Repository<Court>,
 
+    @Inject(forwardRef(() => BookingService))
+    private readonly bookingService: BookingService,
+
     private readonly venueService: VenueService,
     private readonly courtPricing: CourtPricingService,
-    private readonly bookingService: BookingService,
   ) {
     this.logger.log('CourtService initialized with dependencies', this.CONTEXT);
   }
@@ -310,7 +315,7 @@ export class CourtService {
       );
 
       // lấy danh sách booking của sân đã tồn tại trong ngày gửi lên
-      const bookings = await this.bookingService.getBookingsByCourtAndDate(courtId, dateStr);
+      const bookings = await this.bookingService.getActiveBookingsForCourtAndDate(courtId, dateStr);
       this.logger.debug(
         `Found ${bookings.length} existing bookings for court ${courtId} on ${dateStr}`,
         this.CONTEXT,
