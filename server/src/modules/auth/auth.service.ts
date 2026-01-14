@@ -74,11 +74,7 @@ export class AuthService {
       const newUser = await this.userService.createUser(payload);
 
       // Generate verification URL
-      const appUrl = this.config.getOrThrow<string>('app.url');
-      const appPort = this.config.getOrThrow<number>('app.port');
-      const apiPrefix = this.config.getOrThrow<string>('api.prefix');
-      const apiVersion = this.config.getOrThrow<string>('api.version');
-      const url = `${appUrl}:${appPort}/${apiPrefix}/${apiVersion}/auth/verify-email?token=${verificationToken}`;
+      const url = this.buildAuthUrl('verify-email', verificationToken);
 
       // Send verification email
       await this.smtpService.sendMail({
@@ -163,7 +159,7 @@ export class AuthService {
   async login(dto: LoginDto): Promise<JwtResponse> {
     this.logger.debug(`Login attempt for email: ${dto.email}`, this.CONTEXT);
 
-    const user = await this.userService.getUserByEmail(dto.email);
+    const user = await this.userService.getUserByEmailForLogin(dto.email);
     if (!user) {
       this.logger.warn(`Login failed - user not found: ${dto.email}`, this.CONTEXT);
       throw new UnauthorizedException('Invalid email or password');
@@ -226,7 +222,7 @@ export class AuthService {
   async refreshToken(id: string, refreshToken: string): Promise<JwtResponse> {
     this.logger.debug(`Token refresh attempt for user: ${id}`, this.CONTEXT);
 
-    const user = await this.userService.getUserById(id);
+    const user = await this.userService.getAuthUser(id);
     if (!user || !user.refreshTokenHash) {
       this.logger.warn(
         `Token refresh failed - no refresh token found for user: ${id}`,
@@ -278,58 +274,7 @@ export class AuthService {
     }
   }
 
-  async generateTokens({
-    id,
-    email,
-    role,
-  }: {
-    id: string;
-    email: string;
-    role: Role;
-  }): Promise<JwtResponse> {
-    try {
-      // create payload
-      const payload: JwtPayload = {
-        sub: id,
-        email,
-        role,
-      };
-
-      const refreshExpiresIn = this.config.getOrThrow<string>('jwt.refreshToken.expiresIn');
-      const refreshExpiresAt = new Date(Date.now() + ms(refreshExpiresIn as StringValue));
-
-      const [accessToken, refreshToken] = await Promise.all([
-        // sign access token
-        this.jwtService.signAsync(payload, {
-          secret: this.config.getOrThrow('jwt.accessToken.secret'),
-          expiresIn: this.config.getOrThrow('jwt.accessToken.expiresIn'),
-        }),
-
-        // sign refresh token
-        this.jwtService.signAsync(payload, {
-          secret: this.config.getOrThrow('jwt.refreshToken.secret'),
-          expiresIn: this.config.getOrThrow('jwt.refreshToken.expiresIn'),
-        }),
-      ]);
-
-      this.logger.debug(`JWT tokens generated for user: ${email} (ID: ${id})`, this.CONTEXT);
-
-      return {
-        accessToken,
-        refreshToken,
-        refreshTokenExpiresAt: refreshExpiresAt,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Failed to generate JWT tokens for user ${email}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error.stack : undefined,
-        this.CONTEXT,
-      );
-      throw error;
-    }
-  }
-
-  // password
+  // password recovery
   async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
     this.logger.debug(`Password reset request for email: ${dto.email}`, this.CONTEXT);
 
@@ -345,11 +290,7 @@ export class AuthService {
       const resetPasswordToken = crypto.randomBytes(64).toString('hex');
       await this.userService.requestPasswordReset(user.id, resetPasswordToken);
 
-      const appUrl = this.config.getOrThrow<string>('app.url');
-      const appPort = this.config.getOrThrow<string>('app.port');
-      const apiPrefix = this.config.getOrThrow<string>('api.prefix');
-      const apiVersion = this.config.getOrThrow<string>('api.version');
-      const resetPasswordUrl = `${appUrl}:${appPort}/${apiPrefix}/${apiVersion}/auth/reset-password?token=${resetPasswordToken}`;
+      const resetPasswordUrl = this.buildAuthUrl('reset-password', resetPasswordToken);
 
       await this.smtpService.sendMail({
         to: dto.email,
@@ -390,7 +331,7 @@ export class AuthService {
     }
 
     try {
-      await this.userService.resetUserPassword(user.id, dto.password);
+      await this.userService.resetPassword(user.id, dto.password);
 
       await this.notificationService.createNotification(
         user.id,
@@ -417,6 +358,7 @@ export class AuthService {
     }
   }
 
+  // password change
   async changePassword(id: string, dto: ChangePasswordDto): Promise<{ message: string }> {
     this.logger.debug(`Password change request for user: ${id}`, this.CONTEXT);
 
@@ -433,7 +375,7 @@ export class AuthService {
       throw new BadRequestException('New password must be different from the current password');
     }
 
-    const user = await this.userService.getUserById(id);
+    const user = await this.userService.getAuthUser(id);
     if (!user || !user.passwordHash) {
       this.logger.warn(`Password change failed - user not found: ${id}`, this.CONTEXT);
       throw new UnauthorizedException('User not found');
@@ -449,7 +391,7 @@ export class AuthService {
     }
 
     try {
-      await this.userService.resetUserPassword(id, dto.newPassword);
+      await this.userService.resetPassword(id, dto.newPassword);
 
       await this.notificationService.createNotification(
         id,
@@ -471,11 +413,11 @@ export class AuthService {
     }
   }
 
-  // account
+  // email change
   async requestChangeEmail(id: string, dto: ChangeEmailDto): Promise<{ message: string }> {
     this.logger.debug(`Email change request for user ${id}: ${dto.pendingEmail}`, this.CONTEXT);
 
-    const user = await this.userService.getUserById(id);
+    const user = await this.userService.getAuthUser(id);
     if (!user || !user.passwordHash) {
       this.logger.warn(`Email change failed - user not found: ${id}`, this.CONTEXT);
       throw new UnauthorizedException('User not found');
@@ -505,11 +447,7 @@ export class AuthService {
       const changeEmailToken = crypto.randomBytes(64).toString('hex');
       await this.userService.requestEmailChangeVerification(id, dto.pendingEmail, changeEmailToken);
 
-      const appUrl = this.config.getOrThrow<string>('app.url');
-      const appPort = this.config.getOrThrow<string>('app.port');
-      const apiPrefix = this.config.getOrThrow<string>('api.prefix');
-      const apiVersion = this.config.getOrThrow<string>('api.version');
-      const changeEmailUrl = `${appUrl}:${appPort}/${apiPrefix}/${apiVersion}/auth/verify-new-email?token=${changeEmailToken}`;
+      const changeEmailUrl = this.buildAuthUrl('verify-new-email', changeEmailToken);
 
       await this.smtpService.sendMail({
         to: dto.pendingEmail,
@@ -582,5 +520,65 @@ export class AuthService {
       );
       throw error;
     }
+  }
+
+  // helpers
+  private async generateTokens({
+    id,
+    email,
+    role,
+  }: {
+    id: string;
+    email: string;
+    role: Role;
+  }): Promise<JwtResponse> {
+    try {
+      // create payload
+      const payload: JwtPayload = {
+        sub: id,
+        email,
+        role,
+      };
+
+      const refreshExpiresIn = this.config.getOrThrow<string>('jwt.refreshToken.expiresIn');
+      const refreshExpiresAt = new Date(Date.now() + ms(refreshExpiresIn as StringValue));
+
+      const [accessToken, refreshToken] = await Promise.all([
+        // sign access token
+        this.jwtService.signAsync(payload, {
+          secret: this.config.getOrThrow('jwt.accessToken.secret'),
+          expiresIn: this.config.getOrThrow('jwt.accessToken.expiresIn'),
+        }),
+
+        // sign refresh token
+        this.jwtService.signAsync(payload, {
+          secret: this.config.getOrThrow('jwt.refreshToken.secret'),
+          expiresIn: this.config.getOrThrow('jwt.refreshToken.expiresIn'),
+        }),
+      ]);
+
+      this.logger.debug(`JWT tokens generated for user: ${email} (ID: ${id})`, this.CONTEXT);
+
+      return {
+        accessToken,
+        refreshToken,
+        refreshTokenExpiresAt: refreshExpiresAt,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to generate JWT tokens for user ${email}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  private buildAuthUrl(path: string, token: string): string {
+    const baseUrl = this.config.getOrThrow<string>('app.url');
+    const appPort = this.config.getOrThrow<string>('app.port');
+    const apiPrefix = this.config.getOrThrow<string>('api.prefix');
+    const apiVersion = this.config.getOrThrow<string>('api.version');
+    return `${baseUrl}:${appPort}/${apiPrefix}/${apiVersion}/auth/${path}?token=${token}`;
   }
 }

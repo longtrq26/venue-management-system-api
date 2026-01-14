@@ -25,7 +25,7 @@ export class UserController {
   @Get('profile')
   @HttpCode(HttpStatus.OK)
   async getUserProfile(@CurrentUser('sub') userId: string) {
-    return this.userService.getUserProfile(userId);
+    return this.userService.getUserById(userId);
   }
 
   @Patch('profile')

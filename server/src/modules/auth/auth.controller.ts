@@ -31,6 +31,7 @@ export class AuthController {
     private readonly authService: AuthService,
   ) {}
 
+  // registration
   @Throttle({ short: { limit: 3, ttl: 60000 } })
   @Public()
   @Post('register')
@@ -47,6 +48,7 @@ export class AuthController {
     return this.authService.verifyEmail(dto);
   }
 
+  // authentication
   @Throttle({ short: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('login')
@@ -70,6 +72,7 @@ export class AuthController {
     return { message: 'Logged out successfully' };
   }
 
+  // session continuation
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   @Public()
   @UseGuards(RefreshTokenGuard)
@@ -87,6 +90,7 @@ export class AuthController {
     return { accessToken: tokens.accessToken };
   }
 
+  // password recovery
   @Throttle({ short: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('forgot-password')
@@ -107,25 +111,7 @@ export class AuthController {
     return result;
   }
 
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
-  @Post('change-email')
-  @HttpCode(HttpStatus.OK)
-  async changeEmail(@CurrentUser('sub') userId: string, @Body() dto: ChangeEmailDto) {
-    return this.authService.requestChangeEmail(userId, dto);
-  }
-
-  @Throttle({ short: { limit: 5, ttl: 60000 } })
-  @Public()
-  @Get('verify-new-email')
-  @HttpCode(HttpStatus.OK)
-  async verifyNewEmail(@Query() dto: VerifyEmailDto, @Res({ passthrough: true }) res: Response) {
-    const result = await this.authService.confirmChangeEmail(dto);
-
-    res.clearCookie('refresh_token');
-
-    return result;
-  }
-
+  // password change
   @Throttle({ short: { limit: 3, ttl: 60000 } })
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
@@ -141,13 +127,34 @@ export class AuthController {
     return result;
   }
 
+  // email change
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @Post('change-email')
+  @HttpCode(HttpStatus.OK)
+  async changeEmail(@CurrentUser('sub') userId: string, @Body() dto: ChangeEmailDto) {
+    return this.authService.requestChangeEmail(userId, dto);
+  }
+
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @Public()
+  @Get('verify-new-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyNewEmail(@Query() dto: VerifyEmailDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.confirmChangeEmail(dto);
+
+    this.clearRefreshTokenCookie(res);
+
+    return result;
+  }
+
+  // cookie
   private setRefreshTokenCookie(res: Response, token: string, expires: Date) {
     res.cookie('refresh_token', token, {
       httpOnly: true,
       secure: this.config.get('app.env') === 'production',
       sameSite: 'strict',
       expires: expires,
-      path: '/',
+      path: '/api/v1/auth/refresh-token',
     });
   }
 
@@ -156,7 +163,7 @@ export class AuthController {
       httpOnly: true,
       secure: this.config.get('app.env') === 'production',
       sameSite: 'strict',
-      path: '/',
+      path: '/api/v1/auth/refresh-token',
     });
   }
 }

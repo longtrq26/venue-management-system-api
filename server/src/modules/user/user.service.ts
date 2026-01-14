@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
+import { TOKEN_EXPIRY_MS } from 'src/common/constants/common.constant';
 import { NotificationType } from 'src/common/enums/notification-type.enum';
 import { Order } from 'src/common/enums/order.enum';
 import { Role } from 'src/common/enums/role.enum';
@@ -15,7 +16,16 @@ import { NotificationService } from '../notification/notification.service';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserListQueryDto } from './dtos/user-list-query.dto';
 import { User } from './entities/user.entity';
-import { CreateUserPayload, PaginatedUsersResponse, UserResponse } from './types/user.type';
+import {
+  CreateUserPayload,
+  PaginatedUsersResponse,
+  UserAuthResponse,
+  UserEmailChangeResponse,
+  UserLoginResponse,
+  UserPasswordResetResponse,
+  UserResponse,
+  UserVerificationResponse,
+} from './types/user.type';
 
 @Injectable()
 export class UserService {
@@ -51,7 +61,7 @@ export class UserService {
       const newUser = this.userRepository.create({
         ...payload,
         verificationTokenExpiry: payload.verificationToken
-          ? new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
+          ? new Date(Date.now() + TOKEN_EXPIRY_MS) // 15 minutes
           : null,
       });
 
@@ -304,19 +314,10 @@ export class UserService {
     }
   }
 
-  async getUserById(id: string): Promise<User | null> {
+  async getUserById(id: string): Promise<UserResponse | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { id: id, deletedAt: IsNull() },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          isVerified: true,
-          passwordHash: true,
-          refreshTokenHash: true,
-        },
       });
 
       if (!user) {
@@ -336,18 +337,11 @@ export class UserService {
     }
   }
 
-  async getUserByEmail(email: string): Promise<User | null> {
+  //  forgot password, request change email
+  async getUserByEmail(email: string): Promise<UserResponse | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { email, deletedAt: IsNull() },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          isVerified: true,
-          passwordHash: true,
-        },
       });
 
       if (!user) {
@@ -367,19 +361,61 @@ export class UserService {
     }
   }
 
-  async getUserByVerificationToken(token: string): Promise<User | null> {
+  // auth
+  // refresh token, change password
+  async getAuthUser(id: string): Promise<UserAuthResponse | null> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { id: id, deletedAt: IsNull() },
+      });
+
+      if (!user) {
+        this.logger.debug(`User not found by ID: ${id}`, this.CONTEXT);
+        return null;
+      }
+
+      this.logger.debug(`User found by ID: ${id} (${user.email})`, this.CONTEXT);
+      return user;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get user by ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  // login
+  async getUserByEmailForLogin(email: string): Promise<UserLoginResponse | null> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { email, deletedAt: IsNull() },
+      });
+
+      if (!user) {
+        this.logger.debug(`User not found by email: ${email}`, this.CONTEXT);
+        return null;
+      }
+
+      this.logger.debug(`User found by email: ${email} (ID: ${user.id})`, this.CONTEXT);
+      return user;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get user by email ${email}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  // account verification
+  // verify email
+  async getUserByVerificationToken(token: string): Promise<UserVerificationResponse | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { verificationToken: token, deletedAt: IsNull() },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          isVerified: true,
-          verificationToken: true,
-          verificationTokenExpiry: true,
-        },
       });
 
       if (!user) {
@@ -390,6 +426,7 @@ export class UserService {
       // Check if token is expired
       if (user.verificationTokenExpiry && user.verificationTokenExpiry < new Date()) {
         this.logger.warn(`Expired verification token used for user: ${user.email}`, this.CONTEXT);
+        return null;
       }
 
       this.logger.debug(`User found by verification token: ${user.email}`, this.CONTEXT);
@@ -404,40 +441,18 @@ export class UserService {
     }
   }
 
-  async getUserByEmailChangeToken(token: string): Promise<User | null> {
+  async activateUserAccount(id: string): Promise<void> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { emailChangeToken: token, deletedAt: IsNull() },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          isVerified: true,
-          pendingEmail: true,
-          emailChangeToken: true,
-          emailChangeTokenExpiry: true,
-        },
+      await this.userRepository.update(id, {
+        isVerified: true,
+        verificationToken: null,
+        verificationTokenExpiry: null,
       });
 
-      if (!user) {
-        this.logger.debug(`User not found by email change token`, this.CONTEXT);
-        return null;
-      }
-
-      // Check if token is expired
-      if (user.emailChangeTokenExpiry && user.emailChangeTokenExpiry < new Date()) {
-        this.logger.warn(`Expired email change token used for user: ${user.email}`, this.CONTEXT);
-      }
-
-      this.logger.debug(
-        `User found by email change token: ${user.email} -> ${user.pendingEmail}`,
-        this.CONTEXT,
-      );
-      return user;
+      this.logger.log(`User account activated: ${id}`, this.CONTEXT);
     } catch (error) {
       this.logger.error(
-        `Failed to get user by email change token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to activate user account ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );
@@ -445,19 +460,12 @@ export class UserService {
     }
   }
 
-  async getUserByPasswordResetToken(token: string): Promise<User | null> {
+  // password reset
+  // reset password
+  async getUserByPasswordResetToken(token: string): Promise<UserPasswordResetResponse | null> {
     try {
       const user = await this.userRepository.findOne({
         where: { passwordResetToken: token, deletedAt: IsNull() },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          role: true,
-          isVerified: true,
-          passwordResetToken: true,
-          passwordResetTokenExpiry: true,
-        },
       });
 
       if (!user) {
@@ -482,96 +490,11 @@ export class UserService {
     }
   }
 
-  async getUserProfile(id: string): Promise<UserResponse> {
-    try {
-      const user = await this.userRepository.findOne({
-        where: { id, deletedAt: IsNull() },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          phoneNumber: true,
-          role: true,
-          isVerified: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
-
-      if (!user) {
-        this.logger.warn(`User profile not found: ${id}`, this.CONTEXT);
-        throw new NotFoundException('User not found or soft-deleted');
-      }
-
-      this.logger.debug(`User profile retrieved: ${user.email}`, this.CONTEXT);
-      return user;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      this.logger.error(
-        `Failed to get user profile ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error.stack : undefined,
-        this.CONTEXT,
-      );
-      throw error;
-    }
-  }
-
-  // security
-  async activateUserAccount(id: string): Promise<void> {
-    try {
-      await this.userRepository.update(id, {
-        isVerified: true,
-        verificationToken: null,
-        verificationTokenExpiry: null,
-      });
-
-      this.logger.log(`User account activated: ${id}`, this.CONTEXT);
-    } catch (error) {
-      this.logger.error(
-        `Failed to activate user account ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error.stack : undefined,
-        this.CONTEXT,
-      );
-      throw error;
-    }
-  }
-
-  async updateRefreshToken(
-    id: string,
-    token: string | null,
-    expiresAt: Date | null = null,
-  ): Promise<void> {
-    try {
-      const refreshTokenHash = token ? await argon2.hash(token) : null;
-      const finalExpiresAt = token ? expiresAt : null;
-
-      await this.userRepository.update(id, {
-        refreshTokenHash,
-        refreshTokenExpiry: finalExpiresAt,
-      });
-
-      if (token) {
-        this.logger.debug(`Refresh token updated for user: ${id}`, this.CONTEXT);
-      } else {
-        this.logger.debug(`Refresh token cleared for user: ${id}`, this.CONTEXT);
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to update refresh token for user ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error.stack : undefined,
-        this.CONTEXT,
-      );
-      throw error;
-    }
-  }
-
   async requestPasswordReset(id: string, token: string): Promise<void> {
     try {
       await this.userRepository.update(id, {
         passwordResetToken: token,
-        passwordResetTokenExpiry: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+        passwordResetTokenExpiry: new Date(Date.now() + TOKEN_EXPIRY_MS), // 15 minutes
       });
 
       this.logger.log(`Password reset token generated for user: ${id}`, this.CONTEXT);
@@ -585,7 +508,7 @@ export class UserService {
     }
   }
 
-  async resetUserPassword(id: string, newPassword: string): Promise<void> {
+  async resetPassword(id: string, newPassword: string): Promise<void> {
     try {
       const passwordHash = await argon2.hash(newPassword);
 
@@ -608,6 +531,40 @@ export class UserService {
     }
   }
 
+  // email change
+  // request change email, confirm change email
+  async getUserByEmailChangeToken(token: string): Promise<UserEmailChangeResponse | null> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { emailChangeToken: token, deletedAt: IsNull() },
+      });
+
+      if (!user) {
+        this.logger.debug(`User not found by email change token`, this.CONTEXT);
+        return null;
+      }
+
+      // Check if token is expired
+      if (user.emailChangeTokenExpiry && user.emailChangeTokenExpiry < new Date()) {
+        this.logger.warn(`Expired email change token used for user: ${user.email}`, this.CONTEXT);
+        return null;
+      }
+
+      this.logger.debug(
+        `User found by email change token: ${user.email} -> ${user.pendingEmail}`,
+        this.CONTEXT,
+      );
+      return user;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get user by email change token: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
   async requestEmailChangeVerification(
     id: string,
     pendingEmail: string,
@@ -617,7 +574,7 @@ export class UserService {
       await this.userRepository.update(id, {
         pendingEmail,
         emailChangeToken: token,
-        emailChangeTokenExpiry: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+        emailChangeTokenExpiry: new Date(Date.now() + TOKEN_EXPIRY_MS), // 15 minutes
       });
 
       this.logger.log(
@@ -650,6 +607,36 @@ export class UserService {
     } catch (error) {
       this.logger.error(
         `Failed to confirm email change for user ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  // token & session
+  async updateRefreshToken(
+    id: string,
+    token: string | null,
+    expiresAt: Date | null = null,
+  ): Promise<void> {
+    try {
+      const refreshTokenHash = token ? await argon2.hash(token) : null;
+      const finalExpiresAt = token ? expiresAt : null;
+
+      await this.userRepository.update(id, {
+        refreshTokenHash,
+        refreshTokenExpiry: finalExpiresAt,
+      });
+
+      if (token) {
+        this.logger.debug(`Refresh token updated for user: ${id}`, this.CONTEXT);
+      } else {
+        this.logger.debug(`Refresh token cleared for user: ${id}`, this.CONTEXT);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to update refresh token for user ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );

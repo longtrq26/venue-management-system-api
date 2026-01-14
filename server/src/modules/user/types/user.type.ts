@@ -11,17 +11,6 @@ export interface CreateUserPayload {
   isVerified: boolean;
 }
 
-export interface PaginatedUsersResponse {
-  users: User[];
-  meta: {
-    totalItems: number;
-    currentPage: number;
-    lastPage: number;
-    hasNextPage: boolean;
-    hasPreviousPage: boolean;
-  };
-}
-
 export type UserResponse = Omit<
   User,
   | 'passwordHash'
@@ -35,3 +24,28 @@ export type UserResponse = Omit<
   | 'passwordResetToken'
   | 'passwordResetTokenExpiry'
 >;
+
+export type UserLoginResponse = UserResponse & Pick<User, 'passwordHash'>;
+
+export type UserAuthResponse = UserResponse &
+  Pick<User, 'passwordHash' | 'refreshTokenHash' | 'refreshTokenExpiry'>;
+
+export type UserVerificationResponse = UserResponse &
+  Pick<User, 'verificationToken' | 'verificationTokenExpiry'>;
+
+export type UserEmailChangeResponse = UserResponse &
+  Pick<User, 'pendingEmail' | 'emailChangeToken' | 'emailChangeTokenExpiry'>;
+
+export type UserPasswordResetResponse = UserResponse &
+  Pick<User, 'passwordResetToken' | 'passwordResetTokenExpiry'>;
+
+export type PaginatedUsersResponse = {
+  users: UserResponse[];
+  meta: {
+    totalItems: number;
+    currentPage: number;
+    lastPage: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+};
