@@ -93,6 +93,30 @@ export class UserService {
       this.CONTEXT,
     );
 
+    const user = await this.userRepository.findOne({
+      where: { id, deletedAt: IsNull() },
+    });
+
+    if (!user) {
+      this.logger.warn(`User update failed - user not found: ${id}`, this.CONTEXT);
+      throw new NotFoundException('User not found or soft-deleted');
+    }
+
+    const isChanged = Object.keys(dto).some((key) => {
+      if (dto[key] === undefined) return false;
+      return dto[key] !== user[key];
+    });
+
+    if (!isChanged) {
+      this.logger.debug(`No changes detected for user ${id}, skipping update`, this.CONTEXT);
+      return user;
+    }
+
+    this.logger.debug(
+      `Attempting to update user profile - User: ${id}, Fields: ${Object.keys(dto).join(', ')}`,
+      this.CONTEXT,
+    );
+
     if (dto.phoneNumber) {
       const existingUser = await this.userRepository.findOne({
         where: { phoneNumber: dto.phoneNumber, deletedAt: IsNull() },
@@ -209,6 +233,7 @@ export class UserService {
 
     const user = await this.userRepository.findOne({
       where: { id, deletedAt: Not(IsNull()) },
+      withDeleted: true,
     });
 
     if (!user) {
@@ -251,18 +276,18 @@ export class UserService {
     );
 
     try {
-      const queryBuilder = this.userRepository.createQueryBuilder('user');
-
-      queryBuilder.select([
-        'user.id',
-        'user.email',
-        'user.fullName',
-        'user.phoneNumber',
-        'user.role',
-        'user.isVerified',
-        'user.createdAt',
-        'user.deletedAt',
-      ]);
+      const queryBuilder = this.userRepository
+        .createQueryBuilder('user')
+        .select([
+          'user.id',
+          'user.email',
+          'user.fullName',
+          'user.phoneNumber',
+          'user.role',
+          'user.isVerified',
+          'user.createdAt',
+          'user.deletedAt',
+        ]);
 
       if (withDeleted) {
         queryBuilder.withDeleted();
@@ -420,9 +445,12 @@ export class UserService {
   // verify email
   async getUserByVerificationToken(token: string): Promise<UserVerificationResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { verificationToken: token, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository
+        .createQueryBuilder('user')
+        .addSelect(['user.verificationToken', 'user.verificationTokenExpiry'])
+        .where('user.verificationToken = :token', { token })
+        .andWhere('user.deletedAt IS NULL')
+        .getOne();
 
       if (!user) {
         this.logger.debug(`User not found by verification token`, this.CONTEXT);
@@ -485,6 +513,7 @@ export class UserService {
       // Check if token is expired
       if (user.passwordResetTokenExpiry && user.passwordResetTokenExpiry < new Date()) {
         this.logger.warn(`Expired password reset token used for user: ${user.email}`, this.CONTEXT);
+        return null;
       }
 
       this.logger.debug(`User found by password reset token: ${user.email}`, this.CONTEXT);

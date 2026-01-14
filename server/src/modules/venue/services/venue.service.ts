@@ -39,7 +39,10 @@ export class VenueService implements OnModuleInit {
 
   async getVenueConfig(): Promise<VenueConfiguration> {
     try {
-      const config = await this.venueRepository.findOne({ where: {} });
+      const config = await this.venueRepository.findOne({
+        where: {},
+        relations: ['operatingHours'],
+      });
       if (!config) {
         this.logger.debug('No venue configuration found, creating default...', this.CONTEXT);
         const newConfig = this.venueRepository.create();
@@ -68,6 +71,7 @@ export class VenueService implements OnModuleInit {
       );
 
       const config = await this.getVenueConfig();
+
       const updatedConfig = this.venueRepository.merge(config, dto);
       const savedConfig = await this.venueRepository.save(updatedConfig);
 
