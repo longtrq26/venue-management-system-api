@@ -15,6 +15,8 @@ import { UserModule } from './modules/user/user.module';
 import { VenueModule } from './modules/venue/venue.module';
 import { LoggerModule } from './providers/logger/logger.module';
 import { SmtpModule } from './providers/smtp/smtp.module';
+import { StatisticsModule } from './modules/statistics/statistics.module';
+import { ReportModule } from './modules/report/report.module';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { SmtpModule } from './providers/smtp/smtp.module';
     BookingModule,
     VenueModule,
     PaymentModule,
+    StatisticsModule,
+    ReportModule,
   ],
   providers: [
     {
