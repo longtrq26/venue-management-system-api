@@ -164,6 +164,6 @@ Key variables in `.env`:
     └── Dockerfile           # Docker build instructions
 ```
 
-## 📄 License
+<!-- ## 📄 License
 
-This project is UNLICENSED.
+This project is UNLICENSED. -->
