@@ -55,7 +55,7 @@ This gives you a fully functional environment (API + Database + HTTPS Proxy) in 
 1.  **Clone the repository**:
 
     ```bash
-    git clone https://github.com/yourusername/venue-management-system-api.git
+    git clone https://github.com/longtrq26/venue-management-system-api.git
     cd venue-management-system-api
     ```
 
