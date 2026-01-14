@@ -148,6 +148,10 @@ export class CourtService {
     }
   }
 
+  async getCourtsCount() {
+    return this.courtRepository.count();
+  }
+
   async deleteCourt(courtId: string) {
     try {
       const court = await this.courtRepository.findOne({

@@ -22,7 +22,12 @@ import { Brackets, DataSource, Not, Repository } from 'typeorm';
 import { BookingListQueryDto } from '../dtos/booking-list-query.dto';
 import { CreateBookingDto } from '../dtos/create-booking.dto';
 import { Booking } from '../entities/booking.entity';
-import { CreateBookingPayload } from '../types/booking.type';
+import {
+  BookedMinutesStats,
+  BookingReservationStats,
+  CreateBookingPayload,
+  PeakHourStat,
+} from '../types/booking.type';
 import { BookingGroupService } from './booking-group.service';
 
 @Injectable()
@@ -528,6 +533,117 @@ export class BookingService {
     } catch (error) {
       this.logger.error(
         `Failed to update payment status for group ${groupId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async getBookingsForStatistics(startDate: string, endDate: string, courtId?: string) {
+    try {
+      const query = this.bookingRepository
+        .createQueryBuilder('booking')
+        .leftJoinAndSelect('booking.court', 'court')
+        .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+        .andWhere('booking.status IN (:...statuses)', {
+          statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
+        });
+
+      if (courtId) {
+        query.andWhere('booking.courtId = :courtId', { courtId });
+      }
+
+      return await query.getMany();
+    } catch (error) {
+      this.logger.error(
+        `Failed to get bookings for statistics: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async getRevenueForStatistics(startDate: string, endDate: string, courtId?: string) {
+    try {
+      const query = this.bookingRepository
+        .createQueryBuilder('booking')
+        .select('SUM(booking.price)', 'total')
+        .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+        .andWhere('booking.status IN (:...statuses)', {
+          statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
+        });
+
+      if (courtId) {
+        query.andWhere('booking.courtId = :courtId', { courtId });
+      }
+
+      const result = await query.getRawOne<BookingReservationStats>();
+      return Number(result?.total) || 0;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get revenue for statistics: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async getPeakHoursStats(startDate: string, endDate: string, courtId?: string) {
+    try {
+      const query = this.bookingRepository
+        .createQueryBuilder('booking')
+        // Extract hour from start_time. Note: specific to Postgres
+        .select('EXTRACT(HOUR FROM booking.startTime)', 'hour')
+        .addSelect('COUNT(booking.id)', 'count')
+        .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+        .andWhere('booking.status IN (:...statuses)', {
+          statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
+        })
+        .groupBy('hour')
+        .orderBy('count', 'DESC')
+        .limit(5);
+
+      if (courtId) {
+        query.andWhere('booking.courtId = :courtId', { courtId });
+      }
+
+      return await query.getRawMany<PeakHourStat>();
+    } catch (error) {
+      this.logger.error(
+        `Failed to get peak hours stats: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async getTotalBookedMinutes(startDate: string, endDate: string, courtId?: string) {
+    try {
+      const query = this.bookingRepository
+        .createQueryBuilder('booking')
+        // Calculate duration in minutes: (endTime - startTime)
+        // Since startTime/endTime are likely Time or string, we might need casting
+        // Assuming Postgres 'time' type subtract returns interval.
+        // EXTRACT(EPOCH FROM (end_time - start_time))/60 gives minutes
+        .select('SUM(EXTRACT(EPOCH FROM (booking.endTime - booking.startTime))/60)', 'totalMinutes')
+        .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+        .andWhere('booking.status IN (:...statuses)', {
+          statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
+        });
+
+      if (courtId) {
+        query.andWhere('booking.courtId = :courtId', { courtId });
+      }
+
+      const result = await query.getRawOne<BookedMinutesStats>();
+      return Number(result?.totalMinutes) || 0;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get total booked minutes: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );

@@ -1,4 +1,5 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import type { Webhook } from '@payos/node';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import { AccessTokenGuard } from 'src/common/guards/access-token.guard';
@@ -19,7 +20,7 @@ export class PaymentController {
 
   @Public()
   @Post('webhook')
-  async handleWebhook(@Body() body: any) {
+  async handleWebhook(@Body() body: Webhook) {
     return this.paymentService.handleWebhook(body);
   }
 }
