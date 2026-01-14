@@ -55,4 +55,32 @@ export class BookingGroupService {
       throw error;
     }
   }
+
+  async getBookingGroupById(id: string): Promise<BookingGroup | null> {
+    try {
+      this.logger.debug(`Fetching booking group by ID: ${id}`, this.CONTEXT);
+
+      const group = await this.bookingGroupRepository.findOne({
+        where: { id },
+        relations: ['bookings', 'user'],
+      });
+
+      if (!group) {
+        this.logger.debug(`Booking group not found: ${id}`, this.CONTEXT);
+        return null;
+      }
+
+      return group;
+    } catch (error) {
+      const errorMessage = `Failed to get booking group ${id}: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`;
+      this.logger.error(
+        errorMessage,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
 }

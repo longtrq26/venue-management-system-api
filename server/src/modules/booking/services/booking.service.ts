@@ -92,7 +92,11 @@ export class BookingService {
     // Tính giá tiền và chuẩn bị dữ liệu
     for (const dateStr of datesToBook) {
       // Tính giá tiền cho mỗi slot dựa trên type sân và startTime
-      const pricePerSlot = await this.courtPricingService.calculatePrice(court.type, dto.startTime);
+      const pricePerSlot = await this.courtPricingService.calculatePrice(
+        court.type,
+        dto.startTime,
+        dto.courtId,
+      );
 
       // tính toán thời lượng đặt
       const start = dayjs(`2000-01-01 ${dto.startTime}`);
@@ -482,6 +486,48 @@ export class BookingService {
       }
       this.logger.error(
         `Failed to update payment status for booking ${bookingId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async updateGroupPaymentStatus(
+    groupId: string,
+    status: PaymentStatus,
+    bookingStatus?: BookingStatus,
+  ) {
+    try {
+      this.logger.debug(
+        `Updating payment status for Group: ${groupId}, Payment: ${status}, Booking: ${bookingStatus || 'unchanged'}`,
+        this.CONTEXT,
+      );
+
+      const bookings = await this.bookingRepository.find({
+        where: { groupId },
+      });
+
+      if (bookings.length === 0) {
+        this.logger.warn(`No bookings found for group: ${groupId}`, this.CONTEXT);
+        return;
+      }
+
+      await this.bookingRepository.update(
+        { groupId },
+        {
+          paymentStatus: status,
+          ...(bookingStatus && { status: bookingStatus }),
+        },
+      );
+
+      this.logger.log(
+        `Updated ${bookings.length} bookings for group ${groupId} to payment status ${status}`,
+        this.CONTEXT,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to update payment status for group ${groupId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );
