@@ -17,6 +17,7 @@ import { PaymentStatus } from 'src/common/enums/payment-status.enum';
 import { CourtPricingService } from 'src/modules/court/services/court-pricing.service';
 import { CourtService } from 'src/modules/court/services/court.service';
 import { NotificationService } from 'src/modules/notification/notification.service';
+import { VenueService } from 'src/modules/venue/services/venue.service';
 import { LoggerService } from 'src/providers/logger/logger.service';
 import { Brackets, DataSource, FindOptionsWhere, Not, Repository } from 'typeorm';
 import { BookingListQueryDto } from '../dtos/booking-list-query.dto';
@@ -46,6 +47,7 @@ export class BookingService {
     private readonly courtPricingService: CourtPricingService,
     private readonly notificationService: NotificationService,
     private readonly bookingGroupService: BookingGroupService,
+    private readonly venueService: VenueService,
     private readonly dataSource: DataSource,
   ) {
     this.logger.log('BookingService initialized', this.CONTEXT);
@@ -96,6 +98,10 @@ export class BookingService {
 
     // Tính giá tiền và chuẩn bị dữ liệu
     for (const dateStr of datesToBook) {
+      // Lấy venue config để biết slot duration
+      const venueConfig = await this.venueService.getVenueConfig();
+      const slotDuration = venueConfig?.slotDuration || 30;
+
       // Tính giá tiền cho mỗi slot dựa trên type sân và startTime
       const pricePerSlot = await this.courtPricingService.calculatePrice(
         court.type,
@@ -103,14 +109,16 @@ export class BookingService {
         dto.courtId,
       );
 
-      // tính toán thời lượng đặt
+      // Tính số phút của booking
       const start = dayjs(`2000-01-01 ${dto.startTime}`);
       const end = dayjs(`2000-01-01 ${dto.endTime}`);
-      const durationHours = end.diff(start, 'hour', true);
+      const durationMinutes = end.diff(start, 'minute');
 
-      // giá mỗi slot * số lượng slot
-      // Math.ceil(durationHours * 2) / 2 để làm tròn theo block (30 phút)
-      const totalPrice = (pricePerSlot * Math.ceil(durationHours * 2)) / 2;
+      // Tính số slots = tổng phút / slot duration
+      const numberOfSlots = durationMinutes / slotDuration;
+
+      // Tổng giá = giá mỗi slot * số lượng slots
+      const totalPrice = pricePerSlot * numberOfSlots;
 
       // đẩy data vào mảng để chuẩn bị tạo booking
       bookingsData.push({

@@ -159,10 +159,10 @@ export class PaymentService {
         this.CONTEXT,
       );
 
-      // const webhookData = await this.payOS.webhooks.verify(body);
+      const webhookData = await this.payOS.webhooks.verify(body);
 
       // test only
-      const webhookData = body.data;
+      // const webhookData = body.data;
 
       if (!webhookData) {
         this.logger.error('Invalid PayOS webhook signature', undefined, this.CONTEXT);

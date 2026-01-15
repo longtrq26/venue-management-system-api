@@ -23,7 +23,9 @@ export class BookingController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@CurrentUser('sub') userId: string, @Body() dto: CreateBookingDto) {
-    return this.bookingService.createBooking(userId, dto);
+    // TEMP: Use fixed userId for testing
+    const testUserId = 'b0f24935-3202-469e-b85b-f0d1dc18ed2f'; // user@example.com
+    return this.bookingService.createBooking(testUserId, dto);
   }
 
   @Get('user')

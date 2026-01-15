@@ -10,7 +10,8 @@ export const databaseConfig = registerAs('database', () => ({
   password: loadAndValidateEnvironments.DB_PASSWORD,
 
   synchronize: false,
-  logging: loadAndValidateEnvironments.APP_ENV === 'development',
+  // logging: loadAndValidateEnvironments.APP_ENV === 'development',
+  logging:false,
 
   entities: [__dirname + '/../**/*.entity{.ts,.js}'],
   migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],

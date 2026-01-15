@@ -109,13 +109,43 @@ export class CourtPricingService {
   }
 
   calculatePriceFromRules(rules: CourtPricing[], slotStart: string): number {
-    // Rules are already sorted by priority DESC from DB
-    // Find the first rule that matches the time slot
-    const matchedRule = rules.find(
-      (rule) => rule.startTime <= slotStart && rule.endTime > slotStart,
+    // 🛠️ FIX: Chuẩn hóa format thời gian về HH:mm trước khi so sánh
+    // Database lưu startTime/endTime dạng 'HH:mm:ss', nhưng input có thể là 'HH:mm'
+    const normalizeTime = (timeStr: string): string => {
+      // Nếu có seconds (HH:mm:ss), chỉ lấy HH:mm
+      return timeStr.length > 5 ? timeStr.substring(0, 5) : timeStr;
+    };
+
+    const normalizedSlotStart = normalizeTime(slotStart);
+
+    this.logger.debug(
+      `Calculating price for slot ${slotStart} (normalized: ${normalizedSlotStart}) with ${rules.length} rules`,
+      this.CONTEXT,
     );
 
-    return Number(matchedRule?.price) || 0;
+    // Rules are already sorted by priority DESC from DB
+    // Find the first rule that matches the time slot
+    const matchedRule = rules.find((rule) => {
+      const normalizedStart = normalizeTime(rule.startTime);
+      const normalizedEnd = normalizeTime(rule.endTime);
+
+      const matches = normalizedStart <= normalizedSlotStart && normalizedEnd > normalizedSlotStart;
+
+      this.logger.debug(
+        `Checking rule ${rule.id}: ${normalizedStart}-${normalizedEnd}, priority ${rule.priority}, price ${rule.price} -> matches: ${matches}`,
+        this.CONTEXT,
+      );
+
+      return matches;
+    });
+
+    const finalPrice = Number(matchedRule?.price) || 0;
+    this.logger.debug(
+      `Final price for slot ${slotStart}: ${finalPrice} (from rule ${matchedRule?.id || 'none'})`,
+      this.CONTEXT,
+    );
+
+    return finalPrice;
   }
 
   async calculatePrice(type: CourtType, slotStart: string, courtId?: string): Promise<number> {
