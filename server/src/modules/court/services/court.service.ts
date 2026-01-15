@@ -238,7 +238,17 @@ export class CourtService {
 
       // thiết lập thời điểm hoạt động cho ngày gửi lên
       let current = dayjs(`${dateStr} ${todayConfig.openTime}`, 'YYYY-MM-DD HH:mm:ss');
-      const closeTime = dayjs(`${dateStr} ${todayConfig.closeTime}`, 'YYYY-MM-DD HH:mm:ss');
+      let closeTime = dayjs(`${dateStr} ${todayConfig.closeTime}`, 'YYYY-MM-DD HH:mm:ss');
+
+      // 🛠️ FIX: Nếu closeTime là 00:00:00 (nửa đêm), nghĩa là đóng cửa vào nửa đêm ngày HÔM SAU
+      // Ví dụ: openTime = 05:00, closeTime = 00:00 → hoạt động từ 05:00 đến 24:00 (nửa đêm)
+      if (closeTime.isSame(current, 'day') && closeTime.hour() === 0 && closeTime.minute() === 0) {
+        closeTime = closeTime.add(1, 'day');
+        this.logger.debug(
+          `CloseTime adjusted to next day midnight: ${closeTime.format('YYYY-MM-DD HH:mm:ss')}`,
+          this.CONTEXT,
+        );
+      }
 
       this.logger.debug(
         `Time range: ${current.format('HH:mm:ss')} to ${closeTime.format('HH:mm:ss')}, Slot duration: ${slotDuration}min`,
