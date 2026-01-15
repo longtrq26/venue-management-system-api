@@ -11,18 +11,17 @@ export interface CreateUserPayload {
   isVerified: boolean;
 }
 
-export type UserResponse = Omit<
+export type UserResponse = Pick<
   User,
-  | 'passwordHash'
-  | 'verificationToken'
-  | 'verificationTokenExpiry'
-  | 'refreshTokenHash'
-  | 'refreshTokenExpiry'
-  | 'pendingEmail'
-  | 'emailChangeToken'
-  | 'emailChangeTokenExpiry'
-  | 'passwordResetToken'
-  | 'passwordResetTokenExpiry'
+  | 'id'
+  | 'email'
+  | 'fullName'
+  | 'phoneNumber'
+  | 'role'
+  | 'isVerified'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'deletedAt'
 >;
 
 export type PaginatedUsersResponse = {

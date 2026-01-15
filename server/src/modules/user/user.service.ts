@@ -11,7 +11,7 @@ import { NotificationType } from 'src/common/enums/notification-type.enum';
 import { Order } from 'src/common/enums/order.enum';
 import { Role } from 'src/common/enums/role.enum';
 import { LoggerService } from 'src/providers/logger/logger.service';
-import { Brackets, IsNull, Not, Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { NotificationService } from '../notification/notification.service';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { UserListQueryDto } from './dtos/user-list-query.dto';
@@ -36,9 +36,10 @@ export class UserService {
 
   // management
   async createUser(payload: CreateUserPayload): Promise<UserResponse> {
-    const existingUser = await this.userRepository.findOne({
-      where: [{ email: payload.email }, { phoneNumber: payload.phoneNumber }],
-    });
+    const existingUser = await this.userRepository.findOneBy([
+      { email: payload.email },
+      { phoneNumber: payload.phoneNumber },
+    ]);
 
     if (existingUser) {
       this.logger.warn(
@@ -84,9 +85,7 @@ export class UserService {
       this.CONTEXT,
     );
 
-    const user = await this.userRepository.findOne({
-      where: { id, deletedAt: IsNull() },
-    });
+    const user = await this.getUserById(id);
 
     if (!user) {
       this.logger.warn(`User update failed - user not found: ${id}`, this.CONTEXT);
@@ -109,9 +108,7 @@ export class UserService {
     );
 
     if (dto.phoneNumber) {
-      const existingUser = await this.userRepository.findOne({
-        where: { phoneNumber: dto.phoneNumber, deletedAt: IsNull() },
-      });
+      const existingUser = await this.userRepository.findOneBy({ phoneNumber: dto.phoneNumber });
       if (existingUser && existingUser.id !== id) {
         this.logger.warn(
           `Phone number conflict during update - User: ${id}, Phone: ${dto.phoneNumber}`,
@@ -176,9 +173,7 @@ export class UserService {
   async deleteUser(id: string): Promise<void> {
     this.logger.warn(`User deletion initiated - User: ${id}`, this.CONTEXT);
 
-    const user = await this.userRepository.findOne({
-      where: { id, deletedAt: IsNull() },
-    });
+    const user = await this.getUserById(id);
 
     if (!user) {
       this.logger.warn(`User deletion failed - user not found: ${id}`, this.CONTEXT);
@@ -223,7 +218,7 @@ export class UserService {
     this.logger.debug(`User restoration initiated - User: ${id}`, this.CONTEXT);
 
     const user = await this.userRepository.findOne({
-      where: { id, deletedAt: Not(IsNull()) },
+      where: { id },
       withDeleted: true,
     });
 
@@ -258,7 +253,7 @@ export class UserService {
 
   // queries
   async getUserList(dto: UserListQueryDto): Promise<PaginatedUsersResponse> {
-    const { sortOrder = Order.DESC, page = 1, pageSize = 10, search, role, withDeleted } = dto;
+    const { sortOrder = Order.DESC, page = 1, pageSize = 10, search, withDeleted, role } = dto;
     const skip = (page - 1) * pageSize;
 
     this.logger.debug(
@@ -267,26 +262,9 @@ export class UserService {
     );
 
     try {
-      const queryBuilder = this.userRepository
-        .createQueryBuilder('user')
-        .select([
-          'user.id',
-          'user.email',
-          'user.fullName',
-          'user.phoneNumber',
-          'user.role',
-          'user.isVerified',
-          'user.createdAt',
-          'user.deletedAt',
-        ]);
+      const queryBuilder = this.userRepository.createQueryBuilder('user');
 
-      if (withDeleted) {
-        queryBuilder.withDeleted();
-      }
-
-      if (role) {
-        queryBuilder.andWhere('user.role = :role', { role });
-      }
+      queryBuilder.orderBy('user.createdAt', sortOrder);
 
       if (search) {
         queryBuilder.andWhere(
@@ -298,7 +276,14 @@ export class UserService {
         );
       }
 
-      queryBuilder.orderBy('user.createdAt', sortOrder);
+      if (withDeleted) {
+        queryBuilder.withDeleted();
+      }
+
+      if (role) {
+        queryBuilder.andWhere('user.role = :role', { role });
+      }
+
       queryBuilder.skip(skip).take(pageSize);
 
       const [users, total] = await queryBuilder.getManyAndCount();
@@ -332,9 +317,7 @@ export class UserService {
 
   async getUserById(id: string): Promise<UserResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { id: id, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository.findOneBy({ id });
 
       if (!user) {
         this.logger.debug(`User not found by ID: ${id}`, this.CONTEXT);
@@ -356,9 +339,7 @@ export class UserService {
   //  forgot password, request change email
   async getUserByEmail(email: string): Promise<UserResponse | null> {
     try {
-      const user = await this.userRepository.findOne({
-        where: { email, deletedAt: IsNull() },
-      });
+      const user = await this.userRepository.findOneBy({ email });
 
       if (!user) {
         this.logger.debug(`User not found by email: ${email}`, this.CONTEXT);
@@ -385,7 +366,6 @@ export class UserService {
         .createQueryBuilder('user')
         .addSelect(['user.passwordHash', 'user.refreshTokenHash', 'user.refreshTokenExpiry'])
         .where('user.id = :id', { id })
-        .andWhere('user.deletedAt IS NULL')
         .getOne();
 
       if (!user) {
@@ -412,7 +392,6 @@ export class UserService {
         .createQueryBuilder('user')
         .addSelect('user.passwordHash')
         .where('user.email = :email', { email })
-        .andWhere('user.deletedAt IS NULL')
         .getOne();
 
       if (!user) {
@@ -440,7 +419,6 @@ export class UserService {
         .createQueryBuilder('user')
         .addSelect(['user.verificationToken', 'user.verificationTokenExpiry'])
         .where('user.verificationToken = :token', { token })
-        .andWhere('user.deletedAt IS NULL')
         .getOne();
 
       if (!user) {
@@ -493,7 +471,6 @@ export class UserService {
         .createQueryBuilder('user')
         .addSelect(['user.passwordResetToken', 'user.passwordResetTokenExpiry'])
         .where('user.passwordResetToken = :token', { token })
-        .andWhere('user.deletedAt IS NULL')
         .getOne();
 
       if (!user) {
@@ -568,7 +545,6 @@ export class UserService {
         .createQueryBuilder('user')
         .addSelect(['user.pendingEmail', 'user.emailChangeToken', 'user.emailChangeTokenExpiry'])
         .where('user.emailChangeToken = :token', { token })
-        .andWhere('user.deletedAt IS NULL')
         .getOne();
 
       if (!user) {

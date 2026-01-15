@@ -593,12 +593,19 @@ export class BookingService {
     try {
       const query = this.bookingRepository
         .createQueryBuilder('booking')
+
+        // 1. Join với bảng court để lấy thông tin sân
         .leftJoinAndSelect('booking.court', 'court')
+
+        // 2. Lọc các booking trong khoảng thời gian từ startDate đến endDate
         .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+
+        // 3. Chỉ lấy các booking có status là CONFIRMED hoặc COMPLETED
         .andWhere('booking.status IN (:...statuses)', {
           statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
         });
 
+      // Nếu có courtId thì chỉ lấy booking của court đó
       if (courtId) {
         query.andWhere('booking.courtId = :courtId', { courtId });
       }
@@ -618,12 +625,19 @@ export class BookingService {
     try {
       const query = this.bookingRepository
         .createQueryBuilder('booking')
+
+        // 1. Tính tổng (SUM) của cột giá tiền (price) và đặt tên kết quả là 'total'
         .select('SUM(booking.price)', 'total')
+
+        // 2. Lọc các booking trong khoảng thời gian từ startDate đến endDate
         .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+
+        // 3. Chỉ lấy các booking có status là CONFIRMED hoặc COMPLETED
         .andWhere('booking.status IN (:...statuses)', {
           statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
         });
 
+      // Nếu có courtId thì chỉ lấy booking của court đó
       if (courtId) {
         query.andWhere('booking.courtId = :courtId', { courtId });
       }
@@ -644,17 +658,32 @@ export class BookingService {
     try {
       const query = this.bookingRepository
         .createQueryBuilder('booking')
-        // Extract hour from start_time. Note: specific to Postgres
+
+        // 1. Sử dụng hàm EXTRACT của Postgres để lấy giá trị GIỜ từ cột startTime
+        // Ví dụ: startTime là '14:30:00' sẽ trích xuất được số 14.
         .select('EXTRACT(HOUR FROM booking.startTime)', 'hour')
+
+        // 2. Đếm tổng số lượng ID đặt chỗ (tổng số lượt đặt) cho mỗi khung giờ
         .addSelect('COUNT(booking.id)', 'count')
+
+        // 3. Lọc các booking trong khoảng thời gian từ startDate đến endDate
         .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
+
+        // 4. Chỉ lấy các booking có status là CONFIRMED hoặc COMPLETED
         .andWhere('booking.status IN (:...statuses)', {
           statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
         })
+
+        // 5. Group theo hour để có tổng số lượt đặt cho mỗi khung giờ
         .groupBy('hour')
+
+        // 6. Sắp xếp theo số lượt đặt giảm dần
         .orderBy('count', 'DESC')
+
+        // 7. Chỉ lấy top 5 khung giờ có số lượt đặt cao nhất
         .limit(5);
 
+      // Nếu có courtId thì chỉ lấy booking của court đó
       if (courtId) {
         query.andWhere('booking.courtId = :courtId', { courtId });
       }
@@ -674,16 +703,18 @@ export class BookingService {
     try {
       const query = this.bookingRepository
         .createQueryBuilder('booking')
-        // Calculate duration in minutes: (endTime - startTime)
-        // Since startTime/endTime are likely Time or string, we might need casting
-        // Assuming Postgres 'time' type subtract returns interval.
-        // EXTRACT(EPOCH FROM (end_time - start_time))/60 gives minutes
+
+        // 1. (booking.endTime - booking.startTime): Tính khoảng cách giữa 2 mốc thời gian (kiểu Interval trong Postgres).
+        // 2. EXTRACT(EPOCH FROM ...): Chuyển đổi khoảng cách thời gian đó thành tổng số GIÂY.
+        // 3. / 60: Chia cho 60 để đổi từ giây sang PHÚT.
+        // 4. SUM(...): Cộng tổng tất cả số phút của các bản ghi thỏa mãn điều kiện.
         .select('SUM(EXTRACT(EPOCH FROM (booking.endTime - booking.startTime))/60)', 'totalMinutes')
         .where('booking.date BETWEEN :startDate AND :endDate', { startDate, endDate })
         .andWhere('booking.status IN (:...statuses)', {
           statuses: [BookingStatus.CONFIRMED, BookingStatus.COMPLETED],
         });
 
+      // nếu có courtId thì chỉ lấy booking của court đó
       if (courtId) {
         query.andWhere('booking.courtId = :courtId', { courtId });
       }
@@ -700,9 +731,11 @@ export class BookingService {
     }
   }
 
+  // tạo danh sách các ngày cần booking
   private generateBookingDates(dto: CreateBookingDto): string[] {
     try {
       if (dto.type === BookingType.SINGLE) {
+        // nếu là booking đơn phải có date
         if (!dto.date) {
           this.logger.warn('Single booking missing required date', this.CONTEXT);
           throw new BadRequestException('Booking date is required');
@@ -712,19 +745,26 @@ export class BookingService {
       }
 
       const dates: string[] = [];
-      let current = dayjs(dto.startDate);
-      const end = dayjs(dto.endDate);
+      let current = dayjs(dto.startDate); // ngày bắt đầu
+      const end = dayjs(dto.endDate); // ngày kết thúc
 
       this.logger.debug(
         `Generating recurring booking dates from ${dto.startDate} to ${dto.endDate} for days: ${dto.daysOfWeek?.join(', ')}`,
         this.CONTEXT,
       );
 
+      // lặp từ ngày bắt đầu đến ngày kết thúc
       while (current.isSame(end) || current.isBefore(end)) {
+        // lấy ngày hiện tại và convert sang DayOfWeek
         const currentDayOfWeek = current.format('dddd').toUpperCase() as DayOfWeek;
+
+        // nếu ngày hiện tại trong danh sách ngày cần booking
         if (dto.daysOfWeek?.includes(currentDayOfWeek)) {
+          // thêm ngày hiện tại vào danh sách ngày cần booking
           dates.push(current.format('YYYY-MM-DD'));
         }
+
+        // tăng ngày hiện tại lên 1 để check tiếp
         current = current.add(1, 'day');
       }
 

@@ -72,6 +72,17 @@ export class CourtController {
     };
   }
 
+  @Patch(':id/restore')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async restoreCourt(@Param('id', ParseUUIDPipe) id: string) {
+    await this.courtService.restoreCourt(id);
+
+    return {
+      message: 'Court restored successfully',
+    };
+  }
+
   // court pricing management
   @Post('pricing')
   @Roles(Role.ADMIN, Role.MANAGER)
@@ -98,6 +109,17 @@ export class CourtController {
 
     return {
       message: 'Court pricing deleted successfully',
+    };
+  }
+
+  @Patch('pricing/:id/restore')
+  @Roles(Role.ADMIN, Role.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async restoreCourtPricing(@Param('id', ParseUUIDPipe) id: string) {
+    await this.courtPricingService.restoreCourtPricing(id);
+
+    return {
+      message: 'Court pricing restored successfully',
     };
   }
 }

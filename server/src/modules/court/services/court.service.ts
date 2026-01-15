@@ -10,14 +10,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import dayjs from 'dayjs';
 import { CourtStatus } from 'src/common/enums/court-status.enum';
 import { DayOfWeek } from 'src/common/enums/day-of-week.enum';
+import { Order } from 'src/common/enums/order.enum';
 import { BookingService } from 'src/modules/booking/services/booking.service';
 import { VenueService } from 'src/modules/venue/services/venue.service';
 import { LoggerService } from 'src/providers/logger/logger.service';
-import { IsNull, Not, Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { CourtListQueryDto } from '../dtos/court-list-query.dto';
 import { CreateCourtDto } from '../dtos/create-court.dto';
 import { UpdateCourtDto } from '../dtos/update-court.dto';
 import { Court } from '../entities/court.entity';
+import { PaginatedCourtsResponse } from '../types/court.type';
 import { CourtPricingService } from './court-pricing.service';
 
 export interface CourtSlot {
@@ -50,9 +52,7 @@ export class CourtService {
     try {
       this.logger.debug(`Creating court: ${dto.name}, Type: ${dto.type}`, this.CONTEXT);
 
-      const existingCourt = await this.courtRepository.findOne({
-        where: { name: dto.name },
-      });
+      const existingCourt = await this.courtRepository.findOneBy({ name: dto.name });
 
       if (existingCourt) {
         this.logger.warn(`Court creation failed - name already exists: ${dto.name}`, this.CONTEXT);
@@ -81,9 +81,18 @@ export class CourtService {
     }
   }
 
-  async getCourtList(dto: CourtListQueryDto) {
+  async getCourtList(dto: CourtListQueryDto): Promise<PaginatedCourtsResponse> {
     try {
-      const { type, status, search, page = 1, pageSize = 10 } = dto;
+      const {
+        sortOrder = Order.DESC,
+        page = 1,
+        pageSize = 10,
+        search,
+        withDeleted,
+        type,
+        status,
+      } = dto;
+      const skip = (page - 1) * pageSize;
 
       this.logger.debug(
         `Fetching courts - Page: ${page}, Size: ${pageSize}, Type: ${type || 'all'}, Status: ${status || 'all'}, Search: ${search || 'none'}`,
@@ -92,24 +101,29 @@ export class CourtService {
 
       const queryBuilder = this.courtRepository.createQueryBuilder('court');
 
-      // Ensure soft-deleted courts are exluded
-      queryBuilder.andWhere('court.deletedAt IS NULL');
+      queryBuilder.orderBy('court.createdAt', sortOrder);
 
-      if (type) {
-        queryBuilder.andWhere('court.type = :type', { type });
-      }
-      if (status) {
-        queryBuilder.andWhere('court.status = :status', { status });
-      }
       if (search) {
         queryBuilder.andWhere('court.name ILIKE :search', {
           search: `%${search}%`,
         });
       }
 
-      queryBuilder.skip((page - 1) * pageSize).take(pageSize);
+      if (withDeleted) {
+        queryBuilder.withDeleted();
+      }
 
-      const [data, total] = await queryBuilder.getManyAndCount();
+      if (type) {
+        queryBuilder.andWhere('court.type = :type', { type });
+      }
+
+      if (status) {
+        queryBuilder.andWhere('court.status = :status', { status });
+      }
+
+      queryBuilder.skip(skip).take(pageSize);
+
+      const [courts, total] = await queryBuilder.getManyAndCount();
 
       const meta = {
         totalItems: total,
@@ -120,11 +134,11 @@ export class CourtService {
       };
 
       this.logger.debug(
-        `Courts retrieved - Found: ${data.length}, Total: ${total}, Page: ${page}/${meta.lastPage}`,
+        `Courts retrieved - Found: ${courts.length}, Total: ${total}, Page: ${page}/${meta.lastPage}`,
         this.CONTEXT,
       );
 
-      return { data, meta };
+      return { courts, meta };
     } catch (error) {
       this.logger.error(
         `Failed to fetch court list: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -135,125 +149,22 @@ export class CourtService {
     }
   }
 
-  async getCourtById(courtId: string) {
+  async getCourtById(id: string) {
     try {
-      const court = await this.courtRepository.findOne({
-        where: { id: courtId },
-      });
+      const court = await this.courtRepository.findOneBy({ id });
       if (!court) {
-        this.logger.warn(`Court not found: ${courtId}`, this.CONTEXT);
+        this.logger.warn(`Court not found: ${id}`, this.CONTEXT);
         throw new NotFoundException('Court not found');
       }
 
-      this.logger.debug(`Court found: ${court.name} (${courtId})`, this.CONTEXT);
+      this.logger.debug(`Court found: ${court.name} (${id})`, this.CONTEXT);
       return court;
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
       }
       this.logger.error(
-        `Failed to get court by ID ${courtId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error.stack : undefined,
-        this.CONTEXT,
-      );
-      throw error;
-    }
-  }
-
-  async getCourtsCount() {
-    return this.courtRepository.count();
-  }
-
-  async deleteCourt(courtId: string) {
-    try {
-      const court = await this.courtRepository.findOne({
-        where: { id: courtId, deletedAt: IsNull() },
-      });
-
-      if (!court) {
-        this.logger.warn(`Court not found for deletion: ${courtId}`, this.CONTEXT);
-        throw new NotFoundException('Court not found');
-      }
-
-      // Update status to CLOSED before deletion to reflect inactive state
-      court.status = CourtStatus.CLOSED;
-      await this.courtRepository.save(court);
-
-      const result = await this.courtRepository.softDelete(courtId);
-
-      this.logger.log(
-        `Court soft-deleted - ID: ${courtId}, Name: ${court.name}, Type: ${court.type}`,
-        this.CONTEXT,
-      );
-
-      return result;
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      this.logger.error(
-        `Failed to delete court ${courtId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error instanceof Error ? error.stack : undefined,
-        this.CONTEXT,
-      );
-      throw error;
-    }
-  }
-
-  async updateCourt(courtId: string, dto: UpdateCourtDto) {
-    try {
-      this.logger.debug(
-        `Updating court ${courtId} with fields: ${Object.keys(dto).join(', ')}`,
-        this.CONTEXT,
-      );
-
-      const court = await this.getCourtById(courtId);
-
-      const isChanged = Object.keys(dto).some((key) => {
-        if (dto[key] === undefined) return false;
-
-        return dto[key] !== court[key];
-      });
-
-      if (!isChanged) {
-        this.logger.debug(
-          `No changes detected for court ${courtId}, skipping update`,
-          this.CONTEXT,
-        );
-        return court;
-      }
-
-      this.logger.debug(
-        `Updating court ${courtId} with fields: ${Object.keys(dto).join(', ')}`,
-        this.CONTEXT,
-      );
-
-      if (dto.name && dto.name !== court.name) {
-        const existingName = await this.courtRepository.findOne({
-          where: { name: dto.name, id: Not(courtId) },
-        });
-
-        if (existingName) {
-          this.logger.warn(`Court update failed - name conflict: ${dto.name}`, this.CONTEXT);
-          throw new ConflictException('Court name already exists');
-        }
-      }
-
-      Object.assign(court, dto);
-      const updatedCourt = await this.courtRepository.save(court);
-
-      this.logger.log(
-        `Court updated successfully - ID: ${courtId}, Name: ${updatedCourt.name}`,
-        this.CONTEXT,
-      );
-
-      return updatedCourt;
-    } catch (error) {
-      if (error instanceof NotFoundException || error instanceof ConflictException) {
-        throw error;
-      }
-      this.logger.error(
-        `Failed to update court ${courtId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to get court by ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );
@@ -398,6 +309,141 @@ export class CourtService {
       }
       this.logger.error(
         `Failed to get available courts for ${courtId} on ${dateStr}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async getCourtsCount() {
+    return this.courtRepository.count();
+  }
+
+  async updateCourt(courtId: string, dto: UpdateCourtDto) {
+    try {
+      this.logger.debug(
+        `Updating court ${courtId} with fields: ${Object.keys(dto).join(', ')}`,
+        this.CONTEXT,
+      );
+
+      const court = await this.getCourtById(courtId);
+
+      const isChanged = Object.keys(dto).some((key) => {
+        if (dto[key] === undefined) return false;
+
+        return dto[key] !== court[key];
+      });
+
+      if (!isChanged) {
+        this.logger.debug(
+          `No changes detected for court ${courtId}, skipping update`,
+          this.CONTEXT,
+        );
+        return court;
+      }
+
+      this.logger.debug(
+        `Updating court ${courtId} with fields: ${Object.keys(dto).join(', ')}`,
+        this.CONTEXT,
+      );
+
+      if (dto.name && dto.name !== court.name) {
+        const existingName = await this.courtRepository.findOne({
+          where: { name: dto.name, id: Not(courtId) },
+        });
+
+        if (existingName) {
+          this.logger.warn(`Court update failed - name conflict: ${dto.name}`, this.CONTEXT);
+          throw new ConflictException('Court name already exists');
+        }
+      }
+
+      Object.assign(court, dto);
+      const updatedCourt = await this.courtRepository.save(court);
+
+      this.logger.log(
+        `Court updated successfully - ID: ${courtId}, Name: ${updatedCourt.name}`,
+        this.CONTEXT,
+      );
+
+      return updatedCourt;
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof ConflictException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to update court ${courtId}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async deleteCourt(id: string) {
+    try {
+      const court = await this.courtRepository.findOneBy({ id });
+      if (!court) {
+        this.logger.warn(`Court not found for deletion: ${id}`, this.CONTEXT);
+        throw new NotFoundException('Court not found');
+      }
+
+      // Update status to CLOSED before deletion to reflect inactive state
+      court.status = CourtStatus.CLOSED;
+      await this.courtRepository.save(court);
+
+      const result = await this.courtRepository.softDelete(id);
+
+      this.logger.log(
+        `Court soft-deleted - ID: ${id}, Name: ${court.name}, Type: ${court.type}`,
+        this.CONTEXT,
+      );
+
+      return result;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to delete court ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async restoreCourt(id: string): Promise<void> {
+    this.logger.debug(`Court restoration initiated - Court: ${id}`, this.CONTEXT);
+
+    const court = await this.courtRepository.findOne({
+      where: { id },
+      withDeleted: true,
+    });
+
+    if (!court) {
+      this.logger.warn(
+        `Court restoration failed - court not found or not soft-deleted: ${id}`,
+        this.CONTEXT,
+      );
+      throw new NotFoundException('Court not found or not soft-deleted');
+    }
+
+    try {
+      await this.courtRepository.restore(id);
+      await this.courtRepository.update(id, { status: CourtStatus.ACTIVE });
+
+      this.logger.log(
+        `Court restored successfully - ID: ${id}, Name: ${court.name}, Type: ${court.type}`,
+        this.CONTEXT,
+      );
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to restore court ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );

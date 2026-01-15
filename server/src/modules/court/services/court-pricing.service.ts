@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CourtType } from 'src/common/enums/court-type.enum';
 import { VenueService } from 'src/modules/venue/services/venue.service';
 import { LoggerService } from 'src/providers/logger/logger.service';
-import { Brackets, IsNull, Repository } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { CreateCourtPricingDto } from '../dtos/create-court-pricing.dto';
 import { UpdateCourtPricingDto } from '../dtos/update-court-pricing.dto';
 import { CourtPricing } from '../entities/court-pricing.entity';
@@ -237,9 +237,7 @@ export class CourtPricingService {
 
   async deleteCourtPricing(id: string) {
     try {
-      const courtPricing = await this.courtPricingRepository.findOne({
-        where: { id, deletedAt: IsNull() },
-      });
+      const courtPricing = await this.courtPricingRepository.findOneBy({ id });
       if (!courtPricing) {
         this.logger.warn(`Court pricing rule not found for deletion: ${id}`, this.CONTEXT);
         throw new NotFoundException('Court pricing rule not found');
@@ -257,6 +255,36 @@ export class CourtPricingService {
       }
       this.logger.error(
         `Failed to soft-delete court pricing rule ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+        this.CONTEXT,
+      );
+      throw error;
+    }
+  }
+
+  async restoreCourtPricing(id: string) {
+    try {
+      const courtPricing = await this.courtPricingRepository.findOne({
+        where: { id },
+        withDeleted: true,
+      });
+      if (!courtPricing) {
+        this.logger.warn(`Court pricing rule not found for restoration: ${id}`, this.CONTEXT);
+        throw new NotFoundException('Court pricing rule not found');
+      }
+
+      await this.courtPricingRepository.restore(id);
+
+      this.logger.log(
+        `Court pricing rule restored - ID: ${id}, Type: ${courtPricing.type}, Price: ${courtPricing.price}`,
+        this.CONTEXT,
+      );
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to restore court pricing rule ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
         this.CONTEXT,
       );
